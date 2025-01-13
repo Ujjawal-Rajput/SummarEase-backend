@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from flask_cors import CORS  # Import CORS
+import google.generativeai as genai
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,9 +14,25 @@ app = Flask(__name__)
 # Enable CORS for all domains (for development purposes)
 CORS(app)
 
-
-# MongoDB URI
+# load env variables
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 MONGO_URI = os.getenv('MONGO_URI')
+
+# Create the model
+generation_config = {
+  "temperature": 1,
+  "top_p": 0.95,
+  "top_k": 40,
+  "max_output_tokens": 8192,
+  "response_mime_type": "text/plain",
+}
+
+# gemini configs
+model = genai.GenerativeModel(
+  model_name="gemini-1.5-pro",
+  generation_config=generation_config,
+)
+
 client = MongoClient(MONGO_URI)
 db = client['gemini_database']
 collection = db['messages']
@@ -24,9 +41,14 @@ collection = db['messages']
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_API_URL = os.getenv('GEMINI_API_URL')
 
+
+
+
 @app.route('/test', methods=['GET'])
 def test():
     return "hello from python"
+
+
 
 @app.route('/get-response', methods=['POST'])
 def get_response():
@@ -36,8 +58,16 @@ def get_response():
     except:
         print("error")
 
+
 @app.route('/response', methods=['POST'])
 def response():
+
+    '''
+    chat_session = model.start_chat()
+    response = chat_session.send_message("INSERT_INPUT_HERE")
+    print(response.text) 
+    '''
+    
     """
     Endpoint to send the user's message and files to Gemini API
     and return the response from Gemini API.
@@ -77,3 +107,4 @@ def response():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
