@@ -1,5 +1,4 @@
-import os
-import requests
+import os, json
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
@@ -282,64 +281,177 @@ def get_messages(session_id):
 
 
 # -----------------------------
-
-
-
-def Ask_me_anything(prompt):
-    chat_session = model.start_chat()
-    response = chat_session.send_message(prompt)
+def  ai(prompt):
+    response = model.generate_content(prompt)
+    # response = "fine"
+    print("actual ai func end")
     return response.text
 
-def Chapter_summarizer(context, prompt):
-    response = model.generate_content(f"Summarize the following content and highlight all the important points, based on this message - \n {context} : \n{prompt}")
-    return response.text
 
-def Generate_flashcards(prompt, file):
-    pass
+def Ask_ai(text):
+    prompt = f"Answer the following question: {text}"
+    print("end ask ai")
+    return ai(prompt)
 
-def Quiz_generator(prompt, file):
-    pass
+# def Chapter_summarizer(context, prompt):
+#     response = model.generate_content(f"Summarize the following text and highlight all the important points also, based on this message - \n {context} : \n{prompt}")
+#     return response.text
+
+def Summarize_text(text):
+    # Set the system role for summarization
+    prompt = f"Summarize the following text: {text}"
+    # Call the Google Generative AI API
+    print("end summarize")
+    return ai(prompt)
+
+
+def Generate_flashcards(text):
+    prompt = f"Generate 10 important JSONs with heading and description based on the following prompt: {text}"
+    return ai(prompt)
+
+def Quiz_generator(text, num_questions):
+    prompt = f"Generate {num_questions} quiz questions and answers based on the following text: {text}"
+    print("end quiz")
+    return ai(prompt)
 
 
 
-@app.route('/new-session', methods=['GET'])
-def new_session():
-    if not verify_token(token):
-        return jsonify({'Error': "Unauthorized access"})
-    session_id = str(uuid.uuid4())  # Generate a unique session ID
-    return jsonify({'session_id': session_id})
 
+
+# @app.route('/new-session', methods=['GET'])
+# def new_session():
+#     if not verify_token(token):
+#         return jsonify({'Error': "Unauthorized access"})
+#     session_id = str(uuid.uuid4())  # Generate a unique session ID
+#     return jsonify({'session_id': session_id})
+
+def handle_user_prompt(prompt, file_text=None, num_questions=None):
+    # If file is provided, extract text from the file
+    # If no file, use provided text
+    if file_text:
+        print("file_text")
+        extracted_text = file_text
+    else:
+        extracted_text = prompt
+
+    # Call corresponding function based on the user's prompt
+    response_text = None
+    prompt = prompt.lower()
+    if 'summarize' in prompt:
+        print("summarize")
+        response_text = Summarize_text(extracted_text)
+    elif 'important' in prompt:
+        print("flashcard...")
+        response_text = Generate_flashcards(extracted_text)
+    elif 'quiz' in prompt:
+        print("quiz...")
+        response_text = Quiz_generator(extracted_text, num_questions)
+    else:
+        print("asking")
+        response_text = Ask_ai(extracted_text)
+
+    # Return the response as JSON
+    return response_text
 
 
 @app.route('/api/get-response', methods=['POST'])
 def get_response():
-    message = request.form.get("message")
+    token = request.headers.get('Authorization')
+    email = verify_token_and_get_user(token)
+    if email == "Token has expired" or email == "Invalid token":
+        return  jsonify({'message': "Token has expired or invalid token"})
+    if not token or not email:
+        return jsonify({'message': 'Unauthorized'}), 401
+    
+
+    session_id = request.form.get('session_id')
+    prompt = request.form.get("message")
     files = request.files.getlist('file')
+
+    session = next((s for s in sessions if s['sessionId'] == session_id and s['email'] == email), None)
+
+    response = None
     try:
-        print(files)
-        if len(files) > 0:
+        print("ai function started")
+        file = None
+        content = None
+        if len(files)>0:
             content = upload_files_and_get_content(files)
-            first_file = list(content.keys())[0]  
-            print(first_file + " : " + content[first_file]) 
+            first_file = list(content.keys())[0] 
+            file = content[first_file]
 
-            answer = Chapter_summarizer(message, content[first_file])
-            response = {'id':1234, 'message':message, 'response':answer.text, 'files':list(content.keys())}
-            return jsonify(response)
-        
-        
-        answer = Ask_me_anything(message)
-        response = {'id':1234, 'message':message, 'response':answer, 'files':[]}
-        return jsonify(response)
+        print(file)
+        answer = handle_user_prompt(prompt, file, num_questions=10)
+        # answer = handle_user_prompt(prompt, prompt, num_questions=10, file=file)
+        # answer = "fine"
 
-        # response = open("SampleAiResponse.txt",'r')
-        # response = response.read()
+
+        unique_id = uuid.uuid4().int >> 64
+        if len(files) > 0:
+            response = {'id':unique_id, 'message':prompt, 'response':answer, 'files':list(content.keys())}
+        else:
+            response = {'id':unique_id, 'message':prompt, 'response':answer, 'files':[]}
+
+        session['message'].append(response)
+        print(session)
+
+        print("ai response ended")
+        return response
 
     except Exception as e:
         print(e)
-        return jsonify({'id':1234, 'message':message, 'response':"some error occured", 'files':[]}), 500
+        unique_id = uuid.uuid4().int >> 64
+        return jsonify({'id':unique_id, 'message':prompt, 'response':"some error occured", 'files':[]}), 500
+    
+
+# @app.route('/api/get-response', methods=['POST'])
+# def get_response():
+#     token = request.headers.get('Authorization')
+#     email = verify_token_and_get_user(token)
+#     if email == "Token has expired" or email == "Invalid token":
+#         return  jsonify({'message': "Token has expired or invalid token"})
+#     if not token or not email:
+#         return jsonify({'message': 'Unauthorized'}), 401
+    
+
+#     session_id = request.form.get('session_id')
+#     message = request.form.get("message")
+#     files = request.files.getlist('file')
+
+#     session = next((s for s in sessions if s['sessionId'] == session_id and s['email'] == email), None)
+
+#     response = None
+#     try:
+#         print(files)
+#         if len(files) > 0:
+#             content = upload_files_and_get_content(files)
+#             first_file = list(content.keys())[0]  
+#             print(first_file + " : " + content[first_file]) 
+
+#             answer = Chapter_summarizer(message, content[first_file])
+#             # answer = jsonify({'text' :"fine"})
+#             unique_id = uuid.uuid4().int >> 64
+#             response = {'id':unique_id, 'message':message, 'response':answer.text, 'files':list(content.keys())}
+#         else:       
+#             answer = Ask_ai(message)
+#             # answer = "fine outside"
+#             unique_id = uuid.uuid4().int >> 64
+#             response = {'id':unique_id, 'message':message, 'response':answer, 'files':[]}
+        
+#         session['message'].append(response)
+#         print(session)
+#         return jsonify(response)
+
+#         # response = open("SampleAiResponse.txt",'r')
+#         # response = response.read()
+
+#     except Exception as e:
+#         print(e)
+#         unique_id = uuid.uuid4().int >> 64
+#         return jsonify({'id':unique_id, 'message':message, 'response':"some error occured", 'files':[]}), 500
 
 def upload_files_and_get_content(files):
-    print("here")
+    print("file function start")
     print(files)
     file_content = {}
 
@@ -359,6 +471,7 @@ def upload_files_and_get_content(files):
         
         file_content[filename] = extracted_text
 
+    print("saved and ended")
     return file_content
     # return jsonify({'message': 'Files uploaded successfully', 'files': saved_files}), 200
 
