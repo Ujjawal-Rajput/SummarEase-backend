@@ -306,11 +306,37 @@ def Summarize_text(text):
 
 
 def Generate_flashcards(text):
-    prompt = f"Generate 10 important JSONs with heading and description based on the following prompt: {text}"
+    prompt = f"""Generate at least 5 important JSONs with id, heading, and description having an arbitrary number of points.
+    Example of a single JSON:
+    {{
+        "id": 1,
+        "heading": "Recoil example",
+        "description": [
+            {{ "id": "1", "text": "point 1" }},
+            {{ "id": "2", "text": "point 2" }},
+            {{ "id": "3", "text": "point 3" }}
+        ]
+    }}
+    based on the following prompt: {text}"""
+
+    print("end flashcard")
     return ai(prompt)
 
 def Quiz_generator(text, num_questions):
-    prompt = f"Generate {num_questions} quiz questions and answers based on the following text: {text}"
+    prompt = f"""Generate at least 5 important JSONs with id, question, options.
+    Example of a single JSON:
+    {{
+        "id": 1,
+        "question": "Which planet is known as the Red Planet?",
+        "options": [
+            {{ "id": "a", "text": "Venus", "isCorrect": false }},
+            {{ "id": "b", "text": "Mars", "isCorrect": true }},
+            {{ "id": "c", "text": "Jupiter", "isCorrect": false }},
+            {{ "id": "d", "text": "Saturn", "isCorrect": false }}
+        ]
+    }}
+    based on the following text: {text}"""
+
     print("end quiz")
     return ai(prompt)
 
@@ -325,7 +351,7 @@ def Quiz_generator(text, num_questions):
 #     session_id = str(uuid.uuid4())  # Generate a unique session ID
 #     return jsonify({'session_id': session_id})
 
-def handle_user_prompt(prompt, file_text=None, num_questions=None):
+def handle_user_prompt(topic, prompt, file_text=None, num_questions=None):
     # If file is provided, extract text from the file
     # If no file, use provided text
     if file_text:
@@ -336,21 +362,21 @@ def handle_user_prompt(prompt, file_text=None, num_questions=None):
 
     # Call corresponding function based on the user's prompt
     response_text = None
-    prompt = prompt.lower()
-    if 'summarize' in prompt:
+
+    if topic == 'Summarize':
         print("summarize")
         response_text = Summarize_text(extracted_text)
-    elif 'important' in prompt:
-        print("flashcard...")
+    elif topic == 'Flashcard':
+        print("flashcard")
         response_text = Generate_flashcards(extracted_text)
-    elif 'quiz' in prompt:
+    elif topic == 'Quiz':
         print("quiz...")
         response_text = Quiz_generator(extracted_text, num_questions)
     else:
-        print("asking")
+        print("ask-ai")
         response_text = Ask_ai(extracted_text)
 
-    # Return the response as JSON
+    
     return response_text
 
 
@@ -367,7 +393,7 @@ def get_response():
     session_id = request.form.get('session_id')
     prompt = request.form.get("message")
     files = request.files.getlist('file')
-
+    topic = request.form.get('topic')
     session = next((s for s in sessions if s['sessionId'] == session_id and s['email'] == email), None)
 
     response = None
@@ -381,7 +407,7 @@ def get_response():
             file = content[first_file]
 
         print(file)
-        answer = handle_user_prompt(prompt, file, num_questions=10)
+        answer = handle_user_prompt(topic,prompt, file, num_questions=10)
         # answer = handle_user_prompt(prompt, prompt, num_questions=10, file=file)
         # answer = "fine"
 
