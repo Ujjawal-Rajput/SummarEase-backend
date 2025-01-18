@@ -83,8 +83,8 @@ sessions = [
         "email" : "u@u.u",
         "title" : "hello world", 
         "message":[
-            {"id":1, "message": "what is ur name ?", "response": "i am ai", "files": ['yes']},
-            {"id":2, "message": "hello", "response": "hey there !", "files": []}
+            {"topic":"Ask-ai","id":1, "message": "what is ur name ?", "response": "i am ai", "files": ['yes']},
+            {"topic":"Ask-ai","id":2, "message": "hello", "response": "hey there !", "files": []}
         ]
     },
     {
@@ -92,8 +92,8 @@ sessions = [
         "email" : "u@u.u",
         "title" : "hello world 2", 
         "message":[
-            {"id":1, "message": "ok", "response": "please give context", "files": []},
-            {"id":2, "message": "keep quite...", "response": "ok, i will !", "files": []}
+            {"topic":"Ask-ai","id":1, "message": "ok", "response": "please give context", "files": []},
+            {"topic":"Ask-ai","id":2, "message": "keep quite...", "response": "ok, i will !", "files": []}
         ]
     }
 ]
@@ -394,6 +394,7 @@ def get_response():
     prompt = request.form.get("message")
     files = request.files.getlist('file')
     topic = request.form.get('topic')
+
     session = next((s for s in sessions if s['sessionId'] == session_id and s['email'] == email), None)
 
     response = None
@@ -414,9 +415,9 @@ def get_response():
 
         unique_id = uuid.uuid4().int >> 64
         if len(files) > 0:
-            response = {'id':unique_id, 'message':prompt, 'response':answer, 'files':list(content.keys())}
+            response = {'topic':topic,'id':unique_id, 'message':prompt, 'response':answer, 'files':list(content.keys())}
         else:
-            response = {'id':unique_id, 'message':prompt, 'response':answer, 'files':[]}
+            response = {'topic':topic,'id':unique_id, 'message':prompt, 'response':answer, 'files':[]}
 
         session['message'].append(response)
         print(session)
@@ -427,7 +428,7 @@ def get_response():
     except Exception as e:
         print(e)
         unique_id = uuid.uuid4().int >> 64
-        return jsonify({'id':unique_id, 'message':prompt, 'response':"some error occured", 'files':[]}), 500
+        return jsonify({'topic':topic,'id':unique_id, 'message':prompt, 'response':"some error occured", 'files':[]}), 500
     
 
 # @app.route('/api/get-response', methods=['POST'])
