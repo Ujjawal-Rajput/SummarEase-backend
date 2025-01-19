@@ -1,4 +1,4 @@
-import os, json
+import os, random, string
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
@@ -10,6 +10,7 @@ from docx import Document
 import uuid
 import jwt
 import datetime
+import PIL.Image
 # from itsdangerous import URLSafeTimedSerializer as Serializer
 # from itsdangerous import URLSafeTimedSerializer
 
@@ -38,7 +39,15 @@ generation_config = genai.GenerationConfig(
 #   "max_output_tokens": 8192,
 #   "response_mime_type": "text/plain",
 # }
-model = genai.GenerativeModel("gemini-1.5-flash", generation_config = generation_config)
+model = genai.GenerativeModel("gemini-1.5-flash", 
+                              generation_config = generation_config,
+                              system_instruction="""
+                                You are an intelligent educational assistant designed to help students and users in their learning journey. Your primary goals are:
+                                Summarization: Provide clear, concise, and informative summaries of content while preserving the key points.
+                                Quiz Generation: Create engaging and challenging quizzes that test comprehension and reinforce learning, ensuring the difficulty matches the topic and context.
+                                Flashcards: Generate flashcards with concise, question-answer pairs to support effective memorization and revision.
+                                General Questions: Respond accurately and thoughtfully to a wide range of general knowledge and educational queries, providing explanations and actionable insights when necessary.""",
+                            )
 # model = genai.GenerativeModel(
 #   model_name="gemini-1.5-pro",
 #   generation_config=generation_config,
@@ -83,8 +92,8 @@ sessions = [
         "email" : "u@u.u",
         "title" : "hello world", 
         "message":[
-            {"topic":"Ask-ai","id":1, "message": "what is ur name ?", "response": "i am ai", "files": ['yes']},
-            {"topic":"Ask-ai","id":2, "message": "hello", "response": "hey there !", "files": []}
+            {"topic":"Ask-ai", "id":1, "message": "what is ur name ?", "response": "i am ai", "files": ['yes']},
+            {"topic":"Ask-ai", "id":2, "message": "hello", "response": "hey there !", "files": []}
         ]
     },
     {
@@ -92,8 +101,8 @@ sessions = [
         "email" : "u@u.u",
         "title" : "hello world 2", 
         "message":[
-            {"topic":"Ask-ai","id":1, "message": "ok", "response": "please give context", "files": []},
-            {"topic":"Ask-ai","id":2, "message": "keep quite...", "response": "ok, i will !", "files": []}
+            {"topic":"Ask-ai", "id":1, "message": "ok", "response": "please give context", "files": []},
+            {"topic":"Ask-ai", "id":2, "message": "keep quite...", "response": "ok, i will !", "files": []}
         ]
     }
 ]
@@ -278,35 +287,67 @@ def get_messages(session_id):
 
 
 
+# -----------------------------chat history
+def initialize_chat(session_id):
+    """
+    Initializes the chat with the Gemini model using the history from the specified session.
+    
+    Args:
+        session_id (str): The ID of the session to load chat history from.
+        sessions (list): A list of session dictionaries containing chat history.
 
+    Returns:
+        chat: The initialized chat object with history set, or None if session not found.
+    """
+    # Find the session with the given session_id
+    session = next((s for s in sessions if s["sessionId"] == session_id), None)
+    
+    if not session:
+        print(f"No session found for session_id: {session_id}")
+        return None
 
-# -----------------------------
-def  ai(prompt):
-    response = model.generate_content(prompt)
+    # Prepare the chat history from the session's message field
+    history = []
+    for message in session["message"]:
+        history.append({"role": "user", "parts": message["message"]})
+        history.append({"role": "model", "parts": message["response"]})
+
+    # Initialize the chat
+    chat = model.start_chat(history=history)
+    return chat
+
+# -----------------------------tools
+def  ai(prompt, chat):
+    if not chat:
+        print("Chat is not initialized.")
+        return None
+    
+    response = chat.send_message(prompt)
+    # response = model.generate_content(prompt)
     # response = "fine"
     print("actual ai func end")
     return response.text
 
 
-def Ask_ai(text):
-    prompt = f"Answer the following question: {text}"
+def Ask_ai(text, chatHistory):
+    prompt = f"Answer the following: {text}"
     print("end ask ai")
-    return ai(prompt)
+    return ai(prompt, chatHistory)
 
 # def Chapter_summarizer(context, prompt):
 #     response = model.generate_content(f"Summarize the following text and highlight all the important points also, based on this message - \n {context} : \n{prompt}")
 #     return response.text
 
-def Summarize_text(text):
+def Summarize_text(text, chatHistory):
     # Set the system role for summarization
     prompt = f"Summarize the following text: {text}"
     # Call the Google Generative AI API
     print("end summarize")
-    return ai(prompt)
+    return ai(prompt, chatHistory)
 
 
-def Generate_flashcards(text):
-    prompt = f"""Generate at least 5 important JSONs with id, heading, and description having an arbitrary number of points.
+def Generate_flashcards(text, chatHistory):
+    prompt = f"""Generate at least 5 important JSONs with id, heading, and description having atleast 3 points.
     Example of a single JSON:
     {{
         "id": 1,
@@ -320,9 +361,9 @@ def Generate_flashcards(text):
     based on the following prompt: {text}"""
 
     print("end flashcard")
-    return ai(prompt)
+    return ai(prompt, chatHistory)
 
-def Quiz_generator(text, num_questions):
+def Quiz_generator(text, num_questions, chatHistory):
     prompt = f"""Generate at least 5 important JSONs with id, question, options.
     Example of a single JSON:
     {{
@@ -338,7 +379,7 @@ def Quiz_generator(text, num_questions):
     based on the following text: {text}"""
 
     print("end quiz")
-    return ai(prompt)
+    return ai(prompt, chatHistory)
 
 
 
@@ -351,9 +392,8 @@ def Quiz_generator(text, num_questions):
 #     session_id = str(uuid.uuid4())  # Generate a unique session ID
 #     return jsonify({'session_id': session_id})
 
-def handle_user_prompt(topic, prompt, file_text=None, num_questions=None):
-    # If file is provided, extract text from the file
-    # If no file, use provided text
+def handle_user_prompt(topic, chatHistory, prompt, file_text=None, num_questions=None):
+    # If no file, use provided prompt
     if file_text:
         print("file_text")
         extracted_text = file_text
@@ -365,17 +405,16 @@ def handle_user_prompt(topic, prompt, file_text=None, num_questions=None):
 
     if topic == 'Summarize':
         print("summarize")
-        response_text = Summarize_text(extracted_text)
+        response_text = Summarize_text(extracted_text, chatHistory)
     elif topic == 'Flashcard':
         print("flashcard")
-        response_text = Generate_flashcards(extracted_text)
+        response_text = Generate_flashcards(extracted_text, chatHistory)
     elif topic == 'Quiz':
         print("quiz...")
-        response_text = Quiz_generator(extracted_text, num_questions)
+        response_text = Quiz_generator(extracted_text, num_questions, chatHistory)
     else:
         print("ask-ai")
-        response_text = Ask_ai(extracted_text)
-
+        response_text = Ask_ai(extracted_text, chatHistory)
     
     return response_text
 
@@ -384,6 +423,7 @@ def handle_user_prompt(topic, prompt, file_text=None, num_questions=None):
 def get_response():
     token = request.headers.get('Authorization')
     email = verify_token_and_get_user(token)
+
     if email == "Token has expired" or email == "Invalid token":
         return  jsonify({'message': "Token has expired or invalid token"})
     if not token or not email:
@@ -402,13 +442,14 @@ def get_response():
         print("ai function started")
         file = None
         content = None
-        if len(files)>0:
+        if len(files) > 0:
             content = upload_files_and_get_content(files)
             first_file = list(content.keys())[0] 
             file = content[first_file]
 
         print(file)
-        answer = handle_user_prompt(topic,prompt, file, num_questions=10)
+        chatHistory = initialize_chat(session_id)
+        answer = handle_user_prompt(topic, chatHistory, prompt, file)
         # answer = handle_user_prompt(prompt, prompt, num_questions=10, file=file)
         # answer = "fine"
 
@@ -486,21 +527,37 @@ def upload_files_and_get_content(files):
         if file.filename == '':
             continue
         print("here2")
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+
+        original_filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(original_filename)[1]  # Get the extension, e.g., ".pdf"
+
+        # Generate a random encoded filename
+        encoded_filename = ''.join(random.choices(string.ascii_letters + string.digits, k=12)) + file_extension
+
+        # Define the file's save path
+        save_path = os.path.join(app.config['UPLOAD_FOLDER'], encoded_filename)
+
+        # Save the file to the static folder
+        file.save(save_path)
+
 
         extracted_text = None
-        if filename.endswith('.pdf'):
-            extracted_text = extract_text_from_pdf(filepath)
-        elif filename.endswith('.docx'):
-            extracted_text = extract_text_from_docx(filepath)
-        
-        file_content[filename] = extracted_text
+        if encoded_filename.endswith('.pdf'):
+            extracted_text = extract_text_from_pdf(save_path)
+
+        elif encoded_filename.endswith('.docx'):
+            extracted_text = extract_text_from_docx(save_path)
+
+        elif encoded_filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.tiff')):
+            extracted_text = PIL.Image.open(save_path)
+                    
+        file_content[encoded_filename] = extracted_text
 
     print("saved and ended")
     return file_content
     # return jsonify({'message': 'Files uploaded successfully', 'files': saved_files}), 200
+
+
 
 def extract_text_from_pdf(filepath):
     """Extract text from a PDF file."""
@@ -522,5 +579,6 @@ def extract_text_from_docx(filepath):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
+    # app.run(host='192.168.1.6', port=5000, debug=True)
     # app.run(debug=True)
 
