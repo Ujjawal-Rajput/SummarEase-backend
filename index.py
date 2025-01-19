@@ -10,7 +10,6 @@ from docx import Document
 import uuid
 import jwt
 import datetime
-import PIL.Image
 # from itsdangerous import URLSafeTimedSerializer as Serializer
 # from itsdangerous import URLSafeTimedSerializer
 
@@ -67,7 +66,6 @@ app.config['SECRET_KEY'] = SECRET_KEY
 
 
 
-
 users = [
     {
         "name" : "ujjawal",
@@ -76,7 +74,7 @@ users = [
         "sessions" : [
             {
                 "sessionId" :"83891",
-                "title" : "hello world"
+                "title" : "hello world 1"
             },
             {
                 "sessionId" :"98467",
@@ -289,16 +287,6 @@ def get_messages(session_id):
 
 # -----------------------------chat history
 def initialize_chat(session_id):
-    """
-    Initializes the chat with the Gemini model using the history from the specified session.
-    
-    Args:
-        session_id (str): The ID of the session to load chat history from.
-        sessions (list): A list of session dictionaries containing chat history.
-
-    Returns:
-        chat: The initialized chat object with history set, or None if session not found.
-    """
     # Find the session with the given session_id
     session = next((s for s in sessions if s["sessionId"] == session_id), None)
     
@@ -324,7 +312,6 @@ def  ai(prompt, chat):
     
     response = chat.send_message(prompt)
     # response = model.generate_content(prompt)
-    # response = "fine"
     print("actual ai func end")
     return response.text
 
@@ -439,6 +426,9 @@ def get_response():
 
     response = None
     try:
+        if not session:
+            raise PermissionError("Unauthorized access. The session ID is not valid.")
+        
         print("ai function started")
         file = None
         content = None
@@ -518,6 +508,25 @@ def get_response():
 #         unique_id = uuid.uuid4().int >> 64
 #         return jsonify({'id':unique_id, 'message':message, 'response':"some error occured", 'files':[]}), 500
 
+
+
+
+
+# Define supported file extensions
+SUPPORTED_EXTENSIONS = {'txt', 'pdf', 'docx','csv'}
+
+def allowed_file(filename):
+    """Check if the uploaded file is of an allowed type."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in SUPPORTED_EXTENSIONS
+
+class UnsupportedFileTypeError(Exception):
+    """Custom exception for unsupported file types."""
+    def __init__(self, message="Unsupported file type."):
+        self.message = message
+        super().__init__(self.message)
+
+
+
 def upload_files_and_get_content(files):
     print("file function start")
     print(files)
@@ -530,6 +539,9 @@ def upload_files_and_get_content(files):
 
         original_filename = secure_filename(file.filename)
         file_extension = os.path.splitext(original_filename)[1]  # Get the extension, e.g., ".pdf"
+
+        if not allowed_file(original_filename):
+            raise UnsupportedFileTypeError(f"Unsupported file type: {file_extension}") 
 
         # Generate a random encoded filename
         encoded_filename = ''.join(random.choices(string.ascii_letters + string.digits, k=12)) + file_extension
@@ -548,14 +560,21 @@ def upload_files_and_get_content(files):
         elif encoded_filename.endswith('.docx'):
             extracted_text = extract_text_from_docx(save_path)
 
-        elif encoded_filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.tiff')):
-            extracted_text = PIL.Image.open(save_path)
+        elif encoded_filename.endswith('.txt'):
+            extracted_text = extract_text_from_txt(save_path)
+
+        elif encoded_filename.endswith('.csv'):
+            extracted_text = extract_text_from_csv(save_path)
                     
         file_content[encoded_filename] = extracted_text
 
     print("saved and ended")
     return file_content
     # return jsonify({'message': 'Files uploaded successfully', 'files': saved_files}), 200
+
+
+
+
 
 
 
@@ -570,12 +589,27 @@ def extract_text_from_pdf(filepath):
 
 def extract_text_from_docx(filepath):
     """Extract text from a DOCX file."""
+    print("in docx function")
     doc = Document(filepath)
     text = ''
     for paragraph in doc.paragraphs:
         text += paragraph.text + '\n'
     return text
 
+def extract_text_from_txt(filepath):
+    """Extract text from a .txt file."""
+    f = open(filepath, "r")
+    return f.read()
+
+def extract_text_from_csv(filepath):
+    """Extract content from a .csv file."""
+    import csv
+    content = []
+    with open(filepath, mode ='r') as file:
+        csvFile = csv.reader(file)
+        for lines in csvFile:
+                content.append(lines)
+    return content
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
