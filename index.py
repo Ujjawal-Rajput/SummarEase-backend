@@ -12,6 +12,7 @@ import jwt
 import datetime
 import time
 import pymongo
+import bcrypt
 # from itsdangerous import URLSafeTimedSerializer as Serializer
 # from itsdangerous import URLSafeTimedSerializer
 
@@ -121,40 +122,38 @@ sessions = [
 
 # ---------------------Production related code
 
-fetchedData = None
 running = False
-requestCount = 0
-
 @app.route('/api/test', methods=['GET'])
 def test():
-    if fetchedData:
-        return fetchedData
-    else:
-        return jsonify({"status" : None, "text": None, "requestCount": None, "running":running})
+    return jsonify({"status" : None, "text": None, "requestCount": None, "running": running})
 
-def getData():
-    global fetchedData, requestCount
-    response = requests.get("https://summarease-backend.onrender.com/api/test")
-    fetchedData = {"status" : response.status_code, "text": response.text, "requestCount":requestCount, "running": running}
-    return jsonify(fetchedData)
+# fetchedData = None
+# requestCount = 0
 
-@app.route('/api/Request', methods=['GET'])
-def KeepRenderInstanceRunning():
-    global requestCount, running
-    if not running:
-        try:
-            while True:
-                requestCount+=1
-                running = True
-                getData()
-                time.sleep(600)
-            # return jsonify(fetchedData)
-        except Exception as e:
-            running = False
-            print(f"error is {e}")
-            return jsonify({"status" : None, "text": None})
-    else:
-        return fetchedData
+
+# def getData():
+#     global fetchedData, requestCount
+#     response = requests.get("https://summarease-backend.onrender.com/api/test")
+#     fetchedData = {"status" : response.status_code, "text": response.text, "requestCount":requestCount, "running": running}
+#     return jsonify(fetchedData)
+
+# @app.route('/api/Request', methods=['GET'])
+# def KeepRenderInstanceRunning():
+#     global requestCount, running
+#     if not running:
+#         try:
+#             while True:
+#                 requestCount+=1
+#                 running = True
+#                 getData()
+#                 time.sleep(600)
+#             # return jsonify(fetchedData)
+#         except Exception as e:
+#             running = False
+#             print(f"error is {e}")
+#             return jsonify({"status" : None, "text": None})
+#     else:
+#         return fetchedData
     
 # =======ROUTES=========================================================================
 
@@ -230,11 +229,14 @@ def signup():
     if Users.find_one({'email': data['email']}):
         return jsonify({'message': 'Email already exists'}), 400
 
+    # Secure password
+    hashed_password = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
+
     # Insert the new user into the Users collection
     user_data = {
         'name': data['name'],
         'email': data['email'],
-        'password': data['password'],
+        'password': hashed_password,
         'sessions': []
     }
     Users.insert_one(user_data)
@@ -270,9 +272,9 @@ def login():
     # users_collection = mongo.db.Users
 
     # Search for the user in the database
-    user = Users.find_one({'email': data['email'], 'password': data['password']})
+    user = Users.find_one({'email': data['email']})
 
-    if user:
+    if user and bcrypt.checkpw(data["password"].encode('utf-8'), user["password"]):
         # Generate a token for the authenticated user
         token = generate_token(data['email'])
         return jsonify({
@@ -851,7 +853,7 @@ def extract_text_from_csv(filepath):
     return content
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=True)
-    # app.run(host='192.168.1.6', port=5000, debug=True)
+    # app.run(host='127.0.0.1', port=5000, debug=True)
+    app.run(host='192.168.1.6', port=5000, debug=True)
     # app.run(debug=True)
 
