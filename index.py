@@ -31,7 +31,7 @@ genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 # Create the model
 generation_config = genai.GenerationConfig(
     max_output_tokens=1000,
-    temperature=0.1,
+    temperature=0.5,
 )
 # generation_config = {
 #   "temperature": 1,
@@ -44,10 +44,15 @@ model = genai.GenerativeModel("gemini-1.5-flash",
                               generation_config = generation_config,
                               system_instruction="""
                                 You are an intelligent educational assistant designed to help students and users in their learning journey. Your primary goals are:
-                                Summarization: Provide clear, concise, and informative summaries of content while preserving the key points.
+                                Summarization: Provide clear, concise summaries of content while preserving the key points.
                                 Quiz Generation: Create engaging and challenging quizzes that test comprehension and reinforce learning, ensuring the difficulty matches the topic and context.
                                 Flashcards: Generate flashcards with concise, question-answer pairs to support effective memorization and revision.
-                                General Questions: Respond accurately and thoughtfully to a wide range of general knowledge and educational queries, providing explanations and actionable insights when necessary.""",
+                                General Questions: Respond accurately and thoughtfully to a wide range of general knowledge and educational queries, providing explanations and actionable insights when necessary.
+                                Apart from these you have to keep account the previous chats of the user given to you in every prompt.
+                                Analyze the previous messages and responses to generate answers of the new questions.
+                                If you ever feel confused, always look previous messages and try to use them in your response.
+                                If you couldn't get the context of the question, try to use previous chat to get the context. 
+                                If user uses 'this', 'that' then user might want you to look at previous chat messages""",
                             )
 # model = genai.GenerativeModel(
 #   model_name="gemini-1.5-pro",
@@ -516,7 +521,7 @@ def Summarize_text(text, chatHistory):
 
 
 def Generate_flashcards(text, chatHistory):
-    prompt = f"""Generate at least 5 important JSONs with id, heading, and description having atleast 3 points.
+    prompt = f"""Generate 8 important JSONs with id, heading, and description having atleast 3 points.
     Example of a single JSON:
     {{
         "id": 1,
@@ -533,7 +538,7 @@ def Generate_flashcards(text, chatHistory):
     return ai(prompt, chatHistory)
 
 def Quiz_generator(text, num_questions, chatHistory):
-    prompt = f"""Generate at least 5 important JSONs with id, question, options.
+    prompt = f"""Generate 8 important JSONs with id, question, options.
     Example of a single JSON:
     {{
         "id": 1,
