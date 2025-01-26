@@ -63,3 +63,63 @@ Here are some important visuals for understanding and presenting SummarEase:
 4. ![SummarEase Interface - Screenshot 3](https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/003/216/350/datas/original.png)
  
 5. ![SummarEase Interface - Screenshot 2](https://d112y698adiu2z.cloudfront.net/photos/production/software_photos/003/216/340/datas/original.png)
+
+
+## Steps to setup locally
+
+This guide will walk you through setting up the backend of SummarEase Ai.
+
+**1. Clone the Repository (if applicable)**
+
+   - If you are working with a version controlled project (e.g., Git), clone the repository to your local machine:
+
+     ```bash
+     git clone <repository_url>
+     cd <project_directory> 
+     ```
+
+**2. Create a Virtual Environment**
+
+   - Create a virtual environment to isolate project dependencies:
+
+     ```bash
+     python -m venv env 
+     ```
+
+   - Activate the virtual environment:
+
+     ```bash
+     source env/bin/activate  # Linux/macOS
+     env\Scripts\activate.bat  # Windows
+     ```
+
+**3. Install Dependencies**
+
+   - Install project dependencies from `requirements.txt`:
+
+     ```bash
+     pip install -r requirements.txt
+     ```
+
+**4. Add Environment Variables**
+
+   - Create a `.env` file in the project root to store environment variables:
+
+     ```
+     GEMINI_API_KEY=your_api_key
+     MONGO_URI=mongodb://localhost:27017/your_database
+     ```
+
+   - **Important:**
+      - Never commit the `.env` file to version control.
+      - Load environment variables in your Python code using a library like `python-dotenv`.
+
+**5. Run the Application**
+
+   - Run your Flask application:
+
+     ```bash
+     python index.py 
+     ```
+
+

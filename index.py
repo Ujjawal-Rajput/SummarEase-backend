@@ -159,7 +159,7 @@ def test():
 
 # --------------AUTH------------------------
 def generate_token(email):
-    expiration_time = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)  # Token expiration time (1 hour)
+    expiration_time = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=6)  # Token expiration time (1 hour)
     payload = {
         "email": email,
         "exp": expiration_time  # Expiration time field
@@ -290,11 +290,15 @@ def login():
 # Protected Endpoint to Verify Token
 # @app.route('/verify-token', methods=['POST'])
 # def verify():
-#     token = request.json.get('token')
+#     token = request.headers.get('Authorization')
 #     email = verify_token_and_get_user(token)
-#     if email:
-#         return jsonify({'message': 'Token is valid', 'email': email})
-#     return jsonify({'message': 'Invalid or expired token'}), 401
+
+#     # Token validation
+#     if email == "Token has expired" or email == "Invalid token":
+#         return jsonify({'error': 'Invalid or expired token'}), 401
+    
+#     return jsonify({'message': 'Token is verified'}), 200
+
 
 # @app.route('/', methods=['POST'])
 # def verify():
@@ -383,7 +387,7 @@ def create_session():
     token = request.headers.get('Authorization')
     email = verify_token_and_get_user(token)
     if email == "Token has expired" or email == "Invalid token":
-        return  jsonify({'message': "Token has expired or invalid token"})
+        return  jsonify({'message': "Token has expired or invalid token"}), 401
     if not token or not email:
         return jsonify({'message': 'Unauthorized'}), 401
 
@@ -441,9 +445,9 @@ def get_messages(session_id):
     token = request.headers.get('Authorization')
     email = verify_token_and_get_user(token)
     if email == "Token has expired" or email == "Invalid token":
-        return  jsonify({'message': "Token has expired or invalid token"})
+        return  jsonify({'error': "Session has expired"}) # do not add status code 401 here
     if not token or not email:
-        return jsonify({'message': 'Unauthorized'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
     
     # Fetch the session from the sessions collection
     # sessions_collection = mongo.db.sessions
