@@ -47,12 +47,9 @@ model = genai.GenerativeModel("gemini-1.5-flash",
                                 Summarization: Provide clear, concise summaries of content while preserving the key points.
                                 Quiz Generation: Create engaging and challenging quizzes that test comprehension and reinforce learning, ensuring the difficulty matches the topic and context.
                                 Flashcards: Generate flashcards with concise, question-answer pairs to support effective memorization and revision.
-                                General Questions: Respond accurately and thoughtfully to a wide range of general knowledge and educational queries, providing explanations and actionable insights when necessary.
-                                Apart from these you have to keep account the previous chats of the user given to you in every prompt.
-                                Analyze the previous messages and responses to generate answers of the new questions.
-                                If you ever feel confused, always look previous messages and try to use them in your response.
-                                If you couldn't get the context of the question, try to use previous chat to get the context. 
-                                If user uses 'this', 'that' then user might want you to look at previous chat messages""",
+                                General Questions: Respond accurately and thoughtfully to a wide range of general knowledge and educational queries, providing explanations and actionable insights when necessary.         
+                                Apart from that you Analyze the previous messages and responses to generate answers of the new prompts.
+                                If you couldn't get the context of the question, try to use previous messages to get the context and then answer.""",
                             )
 # model = genai.GenerativeModel(
 #   model_name="gemini-1.5-pro",
@@ -285,7 +282,8 @@ def login():
         return jsonify({
             'message': 'Login successful',
             'token': token,
-            'user': {'name': user['name'], 'email': user['email']}
+            'user': {'name': user['name'], 'email': user['email']},
+            'LastSessionId': user['sessions'][-1]['sessionId'] # getting the last sessionId of user
         }), 201
 
     # If no matching user is found
@@ -346,12 +344,12 @@ def get_sessions():
     # Fetch user sessions from the database
     # users_collection = mongo.db.Users
     user = Users.find_one({'email': email})
-    print(user)
+    # print(user)
 
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    print(user['sessions'])
+    # print(user['sessions'])
     return jsonify({"sessions": user.get('sessions', [])}), 200
 
 
@@ -478,7 +476,7 @@ def initialize_chat(session_id):
     session = Sessions.find_one({"sessionId": session_id})
 
     if not session:
-        print(f"No session found for session_id: {session_id}")
+        # print(f"No session found for session_id: {session_id}")
         return None
 
     # Prepare the chat history from the session's message field
@@ -489,7 +487,7 @@ def initialize_chat(session_id):
 
     # Initialize the chat
     chat = model.start_chat(history=history)
-    return chat
+    return chat, history
 
 # -----------------------------tools
 def  ai(prompt, chat):
@@ -504,7 +502,7 @@ def  ai(prompt, chat):
 
 
 def Ask_ai(text, chatHistory):
-    prompt = f"Answer the following: {text}"
+    prompt = f"Look previous messages to get the context and Answer the following: {text}"
     print("end ask ai")
     return ai(prompt, chatHistory)
 
@@ -514,14 +512,14 @@ def Ask_ai(text, chatHistory):
 
 def Summarize_text(text, chatHistory):
     # Set the system role for summarization
-    prompt = f"Summarize the following text: {text}"
+    prompt = f"Look previous messages to get the context and Summarize the following text: {text}"
     # Call the Google Generative AI API
     print("end summarize")
     return ai(prompt, chatHistory)
 
 
 def Generate_flashcards(text, chatHistory):
-    prompt = f"""Generate 8 important JSONs with id, heading, and description having atleast 3 points.
+    prompt = f"""Look previous messages to get the context and Generate 8 important JSONs with id, heading, and description having atleast 3 points.
     Example of a single JSON:
     {{
         "id": 1,
@@ -532,13 +530,13 @@ def Generate_flashcards(text, chatHistory):
             {{ "id": "3", "text": "point 3" }}
         ]
     }}
-    based on the following prompt: {text}"""
+    These JSON's will contain a heading and its description for flashcard based on the following prompt: {text}"""
 
     print("end flashcard")
     return ai(prompt, chatHistory)
 
 def Quiz_generator(text, num_questions, chatHistory):
-    prompt = f"""Generate 8 important JSONs with id, question, options.
+    prompt = f"""Look previous messages to get the context and Generate 8 important JSONs with id, question, options.
     Example of a single JSON:
     {{
         "id": 1,
@@ -550,12 +548,15 @@ def Quiz_generator(text, num_questions, chatHistory):
             {{ "id": "d", "text": "Saturn", "isCorrect": false }}
         ]
     }}
-    based on the following text: {text}"""
+    These JSON's will contain a question and its 4 options for quiz based on the following prompt: {text}"""
 
     print("end quiz")
     return ai(prompt, chatHistory)
 
-
+def Code(text, chatHistory):
+    prompt = f"Look previous messages to get the context and Code based on the following prompt: {text}"
+    print("end coding")
+    return ai(prompt, chatHistory)
 
 
 
@@ -577,7 +578,10 @@ def handle_user_prompt(topic, chatHistory, prompt, file_text=None, num_questions
     # Call corresponding function based on the user's prompt
     response_text = None
 
-    if topic == 'Summarize':
+    if topic == 'Code':
+        print("Coding")
+        response_text = Code(extracted_text, chatHistory)
+    elif topic == 'Summarize':
         print("summarize")
         response_text = Summarize_text(extracted_text, chatHistory)
     elif topic == 'Flashcard':
@@ -592,6 +596,10 @@ def handle_user_prompt(topic, chatHistory, prompt, file_text=None, num_questions
     
     return response_text
 
+
+def getTopic(prompt, response, chatHistory, max_words=5):
+    prompt = f"Generate a title in maximum {max_words} words for the following conversation. My prompt was: {prompt} \n and Your response was: {response}"
+    return ai(prompt, chatHistory)
 
 # # without mongo
 # @app.route('/api/get-response', methods=['POST'])
@@ -675,19 +683,20 @@ def get_response():
         return jsonify({'message': 'Unauthorized access. The session ID is not valid.'}), 403
 
     response = None
+    file = None
+    content = None
 
     try:
         print("ai function started")
-        file = None
-        content = None
         if len(files) > 0:
             content = upload_files_and_get_content(files)
             first_file = list(content.keys())[0] 
             file = content[first_file]
 
-        print(file)
-        chatHistory = initialize_chat(session_id)
-        answer = handle_user_prompt(topic, chatHistory, prompt, file)
+        # print(file)
+        chat, history = initialize_chat(session_id)
+
+        answer = handle_user_prompt(topic, chat, prompt, file)
         # answer = handle_user_prompt(prompt, prompt, num_questions=10, file=file)
         # answer = "fine"
 
@@ -699,9 +708,20 @@ def get_response():
             response = {'topic':topic,'id':unique_id, 'message':prompt, 'response':answer, 'files':[]}
 
 
-        # Update the session in the database
+        # Push into session message
         Sessions.update_one({'sessionId': session_id}, {'$push': {'message': response}})
-        print(session)
+        # print(session)
+
+        # If no previous chat history then get the session-title also
+        if len(history) == 0:
+            title = getTopic(prompt, response, chat, max_words=4)
+
+            result = Users.update_one({"sessions.sessionId": session_id}, {"$set": {"sessions.$[session].title": title}},array_filters=[{"session.sessionId": session_id}])
+            if result.matched_count > 0:
+                Sessions.update_one({'sessionId': session_id}, {'$set': {'title': title}})
+                response['sessionTitle'] = title
+            # Users.update_one({'sessionId': session_id}, {'$set': {'title': topic}})
+            
 
         print("ai response ended")
         return response
@@ -779,7 +799,7 @@ class UnsupportedFileTypeError(Exception):
 
 def upload_files_and_get_content(files):
     print("file function start")
-    print(files)
+    # print(files)
     file_content = {}
 
     for file in files:
@@ -829,40 +849,50 @@ def upload_files_and_get_content(files):
 
 
 def extract_text_from_pdf(filepath):
-    """Extract text from a PDF file."""
+    """Extract text from a PDF file, limited to the first 2 pages."""
     with open(filepath, 'rb') as file:
         reader = PyPDF2.PdfReader(file)
         text = ''
-        for page in reader.pages:
+        for i, page in enumerate(reader.pages):
+            if i >= 2:  # Stop after reading 2 pages
+                break
             text += page.extract_text() + '\n'
     return text
 
 def extract_text_from_docx(filepath):
-    """Extract text from a DOCX file."""
+    """Extract text from a DOCX file, limited to approximately 2 pages."""
     print("in docx function")
     doc = Document(filepath)
     text = ''
+    paragraph_count = 0
     for paragraph in doc.paragraphs:
         text += paragraph.text + '\n'
+        paragraph_count += 1
+        if paragraph_count >= 100:  # approximation of 2 pages worth of paragraphs
+            break
     return text
 
 def extract_text_from_txt(filepath):
-    """Extract text from a .txt file."""
-    f = open(filepath, "r")
-    return f.read()
+    """Extract text from a .txt file, limited to approximately 2 pages."""
+    with open(filepath, "r") as f:
+        lines = f.readlines()
+        # assume ~50 lines per page
+        return ''.join(lines[:100])  # limit to the first 100 lines
 
 def extract_text_from_csv(filepath):
-    """Extract content from a .csv file."""
+    """Extract content from a .csv file, limited to the first 2 pages (rows)."""
     import csv
     content = []
-    with open(filepath, mode ='r') as file:
+    with open(filepath, mode='r') as file:
         csvFile = csv.reader(file)
-        for lines in csvFile:
-                content.append(lines)
+        for i, line in enumerate(csvFile):
+            if i >= 100:  # approximation of 2 pages worth of rows
+                break
+            content.append(line)
     return content
 
 if __name__ == '__main__':
-    # app.run(host='127.0.0.1', port=5000, debug=True)
-    app.run(host='192.168.1.6', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=True)
+    # app.run(host='192.168.1.6', port=5000, debug=True)
     # app.run(debug=True)
 
