@@ -1,7 +1,6 @@
-import os, random, string, requests
+import os, random, string, json
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
-from pymongo import MongoClient
 from dotenv import load_dotenv
 from flask_cors import CORS 
 import google.generativeai as genai
@@ -347,7 +346,7 @@ def get_sessions():
     # print(user)
 
     if not user:
-        return jsonify({'error': 'User not found'}), 404
+        return jsonify({'message': 'User not found'}), 401
 
     # print(user['sessions'])
     return jsonify({"sessions": user.get('sessions', [])}), 200
@@ -400,7 +399,7 @@ def create_session():
     user = Users.find_one({'email': email})
 
     if not user:
-        return jsonify({'message': 'User not found'}), 404
+        return jsonify({'message': 'User not found'}), 401
     
     # Generate a unique session ID
     # session_id = uuid.uuid4().int >> 64  # Generate a unique session ID
@@ -470,24 +469,24 @@ def get_messages(session_id):
 
 # -----------------------------ai related code
 
-def initialize_chat(session_id):
-    # Fetch the session from the sessions collection
-    # sessions_collection = mongo.db.sessions
-    session = Sessions.find_one({"sessionId": session_id})
+# def initialize_chat(session_id):
+#     # Fetch the session from the sessions collection
+#     # sessions_collection = mongo.db.sessions
+#     session = Sessions.find_one({"sessionId": session_id})
 
-    if not session:
-        # print(f"No session found for session_id: {session_id}")
-        return None
+#     if not session:
+#         # print(f"No session found for session_id: {session_id}")
+#         return None
 
-    # Prepare the chat history from the session's message field
-    history = []
-    for message in session.get("message", []):
-        history.append({"role": "user", "parts": message["message"]})
-        history.append({"role": "model", "parts": message["response"]})
+#     # Prepare the chat history from the session's message field
+#     history = []
+#     for message in session.get("message", []):
+#         history.append({"role": "user", "parts": message["message"]})
+#         history.append({"role": "model", "parts": message["response"]})
 
-    # Initialize the chat
-    chat = model.start_chat(history=history)
-    return chat, history
+#     # Initialize the chat
+#     chat = model.start_chat(history=history)
+#     return chat, history
 
 # -----------------------------tools
 def  ai(prompt, chat):
@@ -665,7 +664,7 @@ def get_response():
     email = verify_token_and_get_user(token)
 
     if email == "Token has expired" or email == "Invalid token":
-        return  jsonify({'message': "Token has expired or invalid token"})
+        return  jsonify({'message': "Token has expired or invalid token"}), 401
     if not token or not email:
         return jsonify({'message': 'Unauthorized'}), 401
     
@@ -674,13 +673,15 @@ def get_response():
     prompt = request.form.get("message")
     files = request.files.getlist('file')
     topic = request.form.get('topic')
+    messages_history = json.loads(request.form.get('messages_history'))
+    print(messages_history)
 
     # Fetch the session from the sessions collection
     # sessions_collection = mongo.db.sessions
     session = Sessions.find_one({'sessionId': session_id, 'email': email})
 
     if not session:
-        return jsonify({'message': 'Unauthorized access. The session ID is not valid.'}), 403
+        return jsonify({'message': 'Unauthorized access. The session ID is not valid.'}), 401
 
     response = None
     file = None
@@ -694,7 +695,8 @@ def get_response():
             file = content[first_file]
 
         # print(file)
-        chat, history = initialize_chat(session_id)
+        # chat, history = initialize_chat(session_id)
+        chat = model.start_chat(history=messages_history)
 
         answer = handle_user_prompt(topic, chat, prompt, file)
         # answer = handle_user_prompt(prompt, prompt, num_questions=10, file=file)
@@ -713,7 +715,7 @@ def get_response():
         # print(session)
 
         # If no previous chat history then get the session-title also
-        if len(history) == 0:
+        if len(messages_history) == 0:
             title = getTopic(prompt, response, chat, max_words=4)
 
             result = Users.update_one({"sessions.sessionId": session_id}, {"$set": {"sessions.$[session].title": title}},array_filters=[{"session.sessionId": session_id}])
